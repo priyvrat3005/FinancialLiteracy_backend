@@ -1,0 +1,529 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Seed configuration
+// Run: npx prisma db seed
+// or npm run db:seed
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TABLE 1: Users - Authentication and account management
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  passwordHash String @db.VarChar(255)
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+  updatedAt DateTime @updatedAt @db.Timestamp(3)
+  lastLoginAt DateTime? @db.Timestamp(3)
+
+  profiles Profile[]
+  decisions Decision[]
+  careerProgressions CareerProgression[]
+  auditLogs AuditLog[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// TABLE 2: Cohorts - Rolling weekly game groups with shared macro conditions
+model Cohort {
+  id        String   @id @default(uuid()) @db.Uuid
+  startWeek DateTime @unique @db.Date
+  difficulty CohortDifficulty @db.VarChar(20)
+  /// JSON structure: { marketVolatility: number, inflationRate: number, jobMarketStrength: number }
+  macroConditions Json @db.JsonB
+  status    CohortStatus @db.VarChar(20)
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+
+  profiles Profile[]
+  leaderboardSnapshots LeaderboardSnapshot[]
+
+  @@index([startWeek])
+  @@index([difficulty, status])
+  @@map("cohorts")
+}
+
+enum CohortDifficulty {
+  BEGINNER
+  STANDARD
+  HARD
+}
+
+enum CohortStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+// TABLE 3: Profiles - One "life" in the game - central entity
+model Profile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  cohortId  String   @db.Uuid
+  name      String   @db.VarChar(255)
+  careerPath CareerPath @db.VarChar(20)
+  currentWeek Int @default(0)
+  gameStatus GameStatus @db.VarChar(20)
+
+  // Denormalized metric caches for performance
+  netWorth  Decimal @default(0) @db.Decimal(15, 2)
+  creditScore Int @default(650)
+  socialStatus Int @default(50)
+  wellBeing Int @default(70)
+
+  careerLevel Int @default(1)
+  baseSalary Decimal @default(0) @db.Decimal(12, 2)
+  skillPoints Int @default(0)
+
+  bankruptcyWeek Int?
+  retirementWeek Int?
+
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+  updatedAt DateTime @updatedAt @db.Timestamp(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  balances Balance[]
+  decisions Decision[]
+  gameEvents GameEvent[]
+  careerProgressions CareerProgression[]
+  obligations Obligation[]
+  investmentHoldings InvestmentHolding[]
+  investmentTransactions InvestmentTransaction[]
+  selfInvestments SelfInvestment[]
+  consumptionItems ConsumptionItem[]
+  weeklySummaries WeeklySummary[]
+  leaderboardSnapshots LeaderboardSnapshot[]
+
+  @@unique([userId, cohortId])
+  @@index([userId])
+  @@index([cohortId])
+  @@index([cohortId, netWorth])
+  @@map("profiles")
+}
+
+enum CareerPath {
+  TECH
+  FINANCE
+  CREATIVE
+  HEALTHCARE
+}
+
+enum GameStatus {
+  ACTIVE
+  BANKRUPT
+  RETIRED
+}
+
+// TABLE 4: Balances - Financial positions (SCD Type 2)
+// CRITICAL: Never update rows, only insert new with validFromWeek/validUntilWeek
+model Balance {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  balanceType BalanceType @db.VarChar(30)
+  amount    Decimal  @db.Decimal(15, 2)
+  costBasis Decimal? @db.Decimal(15, 2)
+  /// JSON structure: { interestRate: number, maturityWeek: number, purchaseHistory: [...], etc. }
+  metadata  Json @db.JsonB
+  validFromWeek Int
+  validUntilWeek Int?
+
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, balanceType, validUntilWeek])
+  @@index([profileId, validFromWeek])
+  @@map("balances")
+}
+
+enum BalanceType {
+  CASH
+  SAVINGS_ACCOUNT
+  FIXED_DEPOSIT
+  MUTUAL_FUND_EQUITY
+  MUTUAL_FUND_DEBT
+  STOCKS_LARGE_CAP
+  STOCKS_MID_CAP
+  REAL_ESTATE
+  GOLD
+  DEBT_CREDIT_CARD
+  DEBT_PERSONAL_LOAN
+  DEBT_EDUCATION_LOAN
+  DEBT_HOME_LOAN
+}
+
+// TABLE 5: Decisions - Player choices each week (immutable audit trail)
+model Decision {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  userId    String   @db.Uuid
+  week      Int
+  decisionType DecisionType @db.VarChar(30)
+  amount    Decimal  @db.Decimal(15, 2)
+  target    String   @db.VarChar(255)
+  /// JSON structure: resolved product info at decision time
+  targetDetails Json @db.JsonB
+  /// JSON structure: expected outcomes
+  expectedOutcome Json @db.JsonB
+  /// JSON structure: actual outcomes
+  actualOutcome Json? @db.JsonB
+  executedAt DateTime @default(now()) @db.Timestamp(3)
+  sequenceOrder Int
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  selfInvestments SelfInvestment[]
+  consumptionItems ConsumptionItem[]
+  investmentTransactions InvestmentTransaction[]
+  obligations Obligation[]
+  careerProgressions CareerProgression[]
+
+  @@index([profileId, week])
+  @@index([profileId, decisionType])
+  @@map("decisions")
+}
+
+enum DecisionType {
+  CONSUMPTION
+  INVESTMENT
+  SELF_INVESTMENT
+  OBLIGATION_PAYMENT
+  EMERGENCY_FUND
+}
+
+// TABLE 6: GameEvents - Everything that happens (event sourcing)
+model GameEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  week      Int
+  eventType EventType @db.VarChar(30)
+  eventCategory EventCategory @db.VarChar(20)
+  severity  EventSeverity @db.VarChar(12)
+  description String @db.VarChar(1023)
+  /// JSON structure: { before: {...}, after: {...}, deltas: {...} }
+  impactSnapshot Json @db.JsonB
+  /// JSON structure: decisions that led to this event
+  decisionsSnapshot Json @db.JsonB
+  randomSeedUsed String @db.VarChar(64)
+  probabilityRolled Decimal @db.Decimal(5, 4)
+  probabilityThreshold Decimal @db.Decimal(5, 4)
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, week])
+  @@index([profileId, eventCategory])
+  @@index([eventType, week])
+  @@map("game_events")
+}
+
+enum EventType {
+  SALARY_CREDIT
+  PROMOTION
+  JOB_LOSS
+  SALARY_FREEZE
+  MARKET_CRASH
+  MARKET_BOOM
+  INFLATION_SPIKE
+  ILLNESS
+  MEDICAL_EMERGENCY
+  PEER_PRESSURE_PURCHASE
+  WINDFALL_INHERITANCE
+  DECISION_EXECUTED
+  OBLIGATION_PAID
+}
+
+enum EventCategory {
+  CAREER
+  HEALTH
+  MARKET
+  SOCIAL
+  SYSTEM
+}
+
+enum EventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// TABLE 7: CareerProgression - Career history and salary changes
+model CareerProgression {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  userId    String   @db.Uuid
+  decisionId String? @db.Uuid
+  week      Int
+  previousLevel Int
+  newLevel  Int
+  previousSalary Decimal @db.Decimal(12, 2)
+  newSalary Decimal @db.Decimal(12, 2)
+  promotionType PromotionType @db.VarChar(20)
+  wellBeingFactor Decimal @db.Decimal(3, 2)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  decision Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, week])
+  @@map("career_progression")
+}
+
+enum PromotionType {
+  REGULAR
+  MERIT_BASED
+  SELF_INVESTMENT_BOOST
+}
+
+// TABLE 8: Obligations - Recurring financial commitments
+model Obligation {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  decisionId String? @db.Uuid
+  obligationType ObligationType @db.VarChar(30)
+  name      String   @db.VarChar(255)
+  totalAmount Decimal @db.Decimal(15, 2)
+  currentBalance Decimal @db.Decimal(15, 2)
+  weeklyPayment Decimal @db.Decimal(12, 2)
+  interestRate Decimal? @db.Decimal(5, 4)
+  startedWeek Int
+  remainingWeeks Int?
+  status    ObligationStatus @db.VarChar(20)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  decision Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, status])
+  @@index([profileId, obligationType])
+  @@map("obligations")
+}
+
+enum ObligationType {
+  RENT
+  EMI
+  INSURANCE_HEALTH
+  INSURANCE_LIFE
+  SUBSCRIPTION
+}
+
+enum ObligationStatus {
+  ACTIVE
+  PAID_OFF
+  DEFAULTED
+}
+
+// TABLE 9: InvestmentHoldings - Detailed investment tracking
+model InvestmentHolding {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  productCode String @db.VarChar(100)
+  productCategory ProductCategory @db.VarChar(20)
+  units     Decimal  @db.Decimal(15, 6)
+  averageCostBasis Decimal @db.Decimal(15, 4)
+  currentNAV Decimal @db.Decimal(15, 4)
+  totalInvested Decimal @db.Decimal(15, 2)
+  currentValue Decimal @db.Decimal(15, 2)
+  unrealizedPnL Decimal @db.Decimal(15, 2)
+  startedWeek Int
+  lastValuationWeek Int
+  /// JSON structure: { volatilityProfile: string, sector: string, rentalIncome: number, etc. }
+  metadata  Json @db.JsonB
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  investmentTransactions InvestmentTransaction[]
+
+  @@index([profileId, productCategory])
+  @@index([profileId, productCode])
+  @@map("investment_holdings")
+}
+
+enum ProductCategory {
+  FD
+  MF_EQUITY
+  MF_DEBT
+  STOCKS
+  REAL_ESTATE
+  GOLD
+}
+
+// TABLE 10: InvestmentTransactions - Every buy/sell transaction audit
+model InvestmentTransaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  holdingId String   @db.Uuid
+  decisionId String? @db.Uuid
+  week      Int
+  transactionType TransactionType @db.VarChar(20)
+  units     Decimal  @db.Decimal(15, 6)
+  pricePerUnit Decimal @db.Decimal(15, 4)
+  totalAmount Decimal @db.Decimal(15, 2)
+  fees      Decimal  @db.Decimal(12, 2)
+  taxes     Decimal  @db.Decimal(12, 2)
+  /// JSON structure: market conditions snapshot
+  marketConditions Json @db.JsonB
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  holding InvestmentHolding @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+  decision Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, week])
+  @@index([holdingId])
+  @@map("investment_transactions")
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  INTEREST
+}
+
+// TABLE 11: SelfInvestments - Human capital investments
+model SelfInvestment {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  decisionId String   @unique @db.Uuid
+  investmentType SelfInvestmentType @db.VarChar(20)
+  name      String   @db.VarChar(255)
+  cost      Decimal  @db.Decimal(12, 2)
+  purchasedWeek Int
+  completionWeek Int?
+  careerBoostExpected Int
+  careerBoostActual Int?
+  wellBeingImpact Int
+  status    SelfInvestmentStatus @db.VarChar(20)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, status])
+  @@map("self_investments")
+}
+
+enum SelfInvestmentType {
+  COURSE
+  BOOK
+  CERTIFICATION
+  WORKSHOP
+}
+
+enum SelfInvestmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+// TABLE 12: ConsumptionItems - Purchases for social status and well-being
+model ConsumptionItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  decisionId String   @unique @db.Uuid
+  itemCategory ItemCategory @db.VarChar(20)
+  itemName  String   @db.VarChar(255)
+  cost      Decimal  @db.Decimal(12, 2)
+  purchasedWeek Int
+  socialStatusBoost Int
+  wellBeingBoost Int
+  /// JSON structure: { type: string, halfLifeWeeks: number, currentValue: number, decayRate: number }
+  depreciationModel Json @db.JsonB
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, itemCategory])
+  @@map("consumption_items")
+}
+
+enum ItemCategory {
+  ELECTRONICS
+  VEHICLE
+  VACATION
+  FASHION
+  DINING
+}
+
+// TABLE 13: WeeklySummaries - Pre-computed summaries for fast dashboard loading
+model WeeklySummary {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  week      Int
+  /// JSON structure: opening metrics snapshot
+  openingMetrics Json @db.JsonB
+  /// JSON structure: closing metrics snapshot
+  closingMetrics Json @db.JsonB
+  decisionsMade Int
+  eventsOccurred Int
+  salaryCredited Decimal @db.Decimal(12, 2)
+  obligationsPaid Decimal @db.Decimal(15, 2)
+  discretionarySpent Decimal @db.Decimal(15, 2)
+  investmentChange Decimal @db.Decimal(15, 2)
+  /// JSON structure: { "events": [...], "decisions": [...], "changes": [...] }
+  keyHighlights Json @db.JsonB
+  causalExplanation String @db.VarChar(1023)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, week])
+  @@index([profileId])
+  @@map("weekly_summaries")
+}
+
+// TABLE 14: LeaderboardSnapshots - Materialized view for cohort rankings
+model LeaderboardSnapshot {
+  id        String   @id @default(uuid()) @db.Uuid
+  cohortId  String   @db.Uuid
+  week      Int
+  profileId String   @db.Uuid
+  rank      Int
+  netWorth  Decimal  @db.Decimal(15, 2)
+  creditScore Int
+  weeksSurvived Int
+  isBankrupt Boolean @default(false)
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([cohortId, week, rank])
+  @@index([profileId])
+  @@map("leaderboard_snapshots")
+}
+
+// TABLE 15: AuditLog - System-level audit for debugging
+model AuditLog {
+  id        BigInt    @id @default(autoincrement())
+  tableName String    @db.VarChar(100)
+  recordId  String    @db.Uuid
+  action    AuditAction @db.VarChar(20)
+  /// JSON structure: previous state
+  oldData   Json? @db.JsonB
+  /// JSON structure: new state
+  newData   Json? @db.JsonB
+  changedAt DateTime  @default(now()) @db.Timestamp(3)
+  changedBy String?   @db.Uuid
+  sessionId String    @db.VarChar(100)
+
+  changedByUser User? @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([tableName, recordId])
+  @@index([changedAt])
+  @@map("audit_log")
+}
+
+enum AuditAction {
+  INSERT
+  UPDATE
+  DELETE
+}

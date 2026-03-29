@@ -1,0 +1,34 @@
+{
+  "globalDependencies": [
+    "**/.env.local",
+    "tsconfig.json",
+    ".prettierrc",
+    ".eslintrc.json"
+  ],
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/static/**"],
+      "cache": false
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**", "**/*.test.ts", "**/*.test.tsx"],
+      "cache": false
+    },
+    "lint": {
+      "outputs": [".eslintcache"],
+      "cache": false
+    },
+    "type-check": {
+      "cache": false
+    },
+    "format": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
