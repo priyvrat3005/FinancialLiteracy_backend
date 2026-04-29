@@ -38,10 +38,10 @@ model User {
 model Cohort {
   id        String   @id @default(uuid()) @db.Uuid
   startWeek DateTime @unique @db.Date
-  difficulty CohortDifficulty @db.VarChar(20)
+  difficulty CohortDifficulty
   /// JSON structure: { marketVolatility: number, inflationRate: number, jobMarketStrength: number }
   macroConditions Json @db.JsonB
-  status    CohortStatus @db.VarChar(20)
+  status    CohortStatus
   createdAt DateTime @default(now()) @db.Timestamp(3)
 
   profiles Profile[]
@@ -70,9 +70,9 @@ model Profile {
   userId    String   @db.Uuid
   cohortId  String   @db.Uuid
   name      String   @db.VarChar(255)
-  careerPath CareerPath @db.VarChar(20)
+  careerPath CareerPath
   currentWeek Int @default(0)
-  gameStatus GameStatus @db.VarChar(20)
+  gameStatus GameStatus
 
   // Denormalized metric caches for performance
   netWorth  Decimal @default(0) @db.Decimal(15, 2)
@@ -130,7 +130,7 @@ enum GameStatus {
 model Balance {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
-  balanceType BalanceType @db.VarChar(30)
+  balanceType BalanceType
   amount    Decimal  @db.Decimal(15, 2)
   costBasis Decimal? @db.Decimal(15, 2)
   /// JSON structure: { interestRate: number, maturityWeek: number, purchaseHistory: [...], etc. }
@@ -169,7 +169,7 @@ model Decision {
   profileId String   @db.Uuid
   userId    String   @db.Uuid
   week      Int
-  decisionType DecisionType @db.VarChar(30)
+  decisionType DecisionType
   amount    Decimal  @db.Decimal(15, 2)
   target    String   @db.VarChar(255)
   /// JSON structure: resolved product info at decision time
@@ -208,9 +208,9 @@ model GameEvent {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
   week      Int
-  eventType EventType @db.VarChar(30)
-  eventCategory EventCategory @db.VarChar(20)
-  severity  EventSeverity @db.VarChar(12)
+  eventType EventType
+  eventCategory EventCategory
+  severity  EventSeverity
   description String @db.VarChar(1023)
   /// JSON structure: { before: {...}, after: {...}, deltas: {...} }
   impactSnapshot Json @db.JsonB
@@ -271,7 +271,7 @@ model CareerProgression {
   newLevel  Int
   previousSalary Decimal @db.Decimal(12, 2)
   newSalary Decimal @db.Decimal(12, 2)
-  promotionType PromotionType @db.VarChar(20)
+  promotionType PromotionType
   wellBeingFactor Decimal @db.Decimal(3, 2)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -293,7 +293,7 @@ model Obligation {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
   decisionId String? @db.Uuid
-  obligationType ObligationType @db.VarChar(30)
+  obligationType ObligationType
   name      String   @db.VarChar(255)
   totalAmount Decimal @db.Decimal(15, 2)
   currentBalance Decimal @db.Decimal(15, 2)
@@ -301,7 +301,7 @@ model Obligation {
   interestRate Decimal? @db.Decimal(5, 4)
   startedWeek Int
   remainingWeeks Int?
-  status    ObligationStatus @db.VarChar(20)
+  status    ObligationStatus
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   decision Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
@@ -330,7 +330,7 @@ model InvestmentHolding {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
   productCode String @db.VarChar(100)
-  productCategory ProductCategory @db.VarChar(20)
+  productCategory ProductCategory
   units     Decimal  @db.Decimal(15, 6)
   averageCostBasis Decimal @db.Decimal(15, 4)
   currentNAV Decimal @db.Decimal(15, 4)
@@ -366,7 +366,7 @@ model InvestmentTransaction {
   holdingId String   @db.Uuid
   decisionId String? @db.Uuid
   week      Int
-  transactionType TransactionType @db.VarChar(20)
+  transactionType TransactionType
   units     Decimal  @db.Decimal(15, 6)
   pricePerUnit Decimal @db.Decimal(15, 4)
   totalAmount Decimal @db.Decimal(15, 2)
@@ -396,7 +396,7 @@ model SelfInvestment {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
   decisionId String   @unique @db.Uuid
-  investmentType SelfInvestmentType @db.VarChar(20)
+  investmentType SelfInvestmentType
   name      String   @db.VarChar(255)
   cost      Decimal  @db.Decimal(12, 2)
   purchasedWeek Int
@@ -404,7 +404,7 @@ model SelfInvestment {
   careerBoostExpected Int
   careerBoostActual Int?
   wellBeingImpact Int
-  status    SelfInvestmentStatus @db.VarChar(20)
+  status    SelfInvestmentStatus
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
@@ -431,7 +431,7 @@ model ConsumptionItem {
   id        String   @id @default(uuid()) @db.Uuid
   profileId String   @db.Uuid
   decisionId String   @unique @db.Uuid
-  itemCategory ItemCategory @db.VarChar(20)
+  itemCategory ItemCategory
   itemName  String   @db.VarChar(255)
   cost      Decimal  @db.Decimal(12, 2)
   purchasedWeek Int
@@ -506,7 +506,7 @@ model AuditLog {
   id        BigInt    @id @default(autoincrement())
   tableName String    @db.VarChar(100)
   recordId  String    @db.Uuid
-  action    AuditAction @db.VarChar(20)
+  action    AuditAction
   /// JSON structure: previous state
   oldData   Json? @db.JsonB
   /// JSON structure: new state
